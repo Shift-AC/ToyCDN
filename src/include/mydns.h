@@ -4,6 +4,9 @@
 #include <netdb.h>
 #include "types.h"
 
+#define MAX_ATTEMPT 3
+#define RTO_IN_US 1000000
+
 struct dnshdr
 {
     word id;
@@ -86,5 +89,9 @@ int resolve(const char *node, const char *service,
  * @return 0 on success, -1 otherwise
  */
 int mydns_freeaddrinfo(struct addrinfo *p);
+
+
+char *atoqn(char *dest, const char *src);
+char *qntoa(char *dest, const char *src);
 
 #endif
