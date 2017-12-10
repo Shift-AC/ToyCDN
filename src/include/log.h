@@ -5,8 +5,12 @@
 #include "lock.h"
 
 // set them use gcc -D option.
-//#define PROGNAME ""
-//#define VERSION ""
+#ifndef PROGNAME
+#define PROGNAME ""
+#endif
+#ifndef VERSION
+#define VERSION ""
+#endif
 
 extern int verbose;
 extern FILE *logFile;
@@ -68,6 +72,15 @@ void printInitLog();
         exit(1);                                                    \
     } while (0)
 
+#ifdef DEBUG
+#define logDebug(...)                                               \
+    do                                                              \
+    {                                                               \
+        doLog("[  Debug  ]", __VA_ARGS__);                          \
+    } while (0)
+#else
+#define logDebug(...)
+#endif
 
 static inline char *strerrorV(int num, char *buf)
 {
@@ -86,6 +99,26 @@ static inline unsigned int alarmWithLog(unsigned long useconds)
 
     logVerboseL(3, "Alarm %d.%ds", tc.it_value.tv_sec, tc.it_value.tv_usec);
     return setitimer(ITIMER_REAL, &tv, NULL);
+}
+
+static inline void redirectLogTo(char *path)
+{
+    FILE *newFile;
+    char errbuf[256];
+    
+    // we don't mean to close the stdout/err files here.
+    if (logFile != stderr && logFile != stdout)
+    {
+        fclose(logFile);
+    }
+    if ((newFile = fopen(path, "a")) == NULL)
+    {
+        logFatal("Can't open log file %s(%s).", path, strerrorV(errno, errbuf));
+    }
+    else
+    {
+        logFile = newFile;
+    }
 }
 
 static inline int unalarm()
