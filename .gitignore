@@ -1,3 +1,5 @@
 *.db*
 *.exe
-*.otest/*
+*.o
+test/*
+bin/*

@@ -4,8 +4,8 @@
 
 #define BUFSIZE 1024
 
-static sockaddr_in dnsAddr;
-static sockaddr_in myAddr;
+static struct sockaddr_in dnsAddr;
+static struct sockaddr_in myAddr;
 /**
  * Initialize your client DNS library with the IP address and port number of
  * your DNS server.
@@ -17,7 +17,6 @@ static sockaddr_in myAddr;
  * @return 0 on success, -1 otherwise
  */
 int init_mydns(const char *dns_ip, unsigned int dns_port, const char *client_ip){
-    byte buf[16];
     if (inet_aton(dns_ip, &dnsAddr.sin_addr) == 0)
     {
         return -1;
@@ -59,14 +58,13 @@ static int mydns_netdial()
     return s;
 netdial_fail_free:
     close(s);
-netfail_fail_final:
+netdial_fail_final:
     return -1;
 }
 
 char *atoqn(char *dest, const char *src)
 {
     int wlen = 0;
-    int len = strlen(src);
 
     do
     {
@@ -96,10 +94,12 @@ char *qntoa(char *dest, const char *src)
     while (*src)
     {
         memcpy(dest, src + 1, *src);
-        dest[*src] = '.';
+        dest[(int)*src] = '.';
         dest += *src + 1;
         src += *src + 1;
     }
+
+    return dest;
 }
 
 static int generateRequest(const char *node, const char *service, void *pak)
@@ -109,7 +109,9 @@ static int generateRequest(const char *node, const char *service, void *pak)
     static const word qclass = 1;
     struct dnshdr* hdr = (struct dnshdr*)pak;
     char *qname = (char*)(pak + sizeof(struct dnshdr));
-    int wlen = 0;
+
+    // make gcc happy
+    service = service + 1 - 1;
 
     hdr->id = htons(atomic_fetch_add_explicit(&id, 1, memory_order_relaxed));
     hdr->qr = 0;
@@ -218,6 +220,8 @@ static int generateAddrinfo(const void *rpak, int off, struct addrinfo **res,
             ite = ite->ai_next;
         }
     }
+
+    return 0;
 }
 
 /**
@@ -251,7 +255,6 @@ int resolve(const char *node, const char *service,
     int sockfd;
     byte *sendBuf = malloc(BUFSIZE);
     byte *recvBuf = malloc(BUFSIZE);
-    struct sigaction old;
     socklen_t slen = sizeof(struct sockaddr);
     int len;
     int ret = -1;
@@ -259,12 +262,14 @@ int resolve(const char *node, const char *service,
     struct timeval timeout = {
         RTO_IN_US / 1000000, RTO_IN_US % 1000000 }; 
 
+    hints = hints + 1 - 1;
+
     if ((len = generateRequest(node, service, sendBuf)) == 0)
     {
         goto resolve_final;
     }
 
-    if ((sockfd = mydns_netdial() == -1)
+    if ((sockfd = mydns_netdial() == -1))
     {
         goto resolve_final;
     } 
@@ -279,7 +284,7 @@ int resolve(const char *node, const char *service,
     {
         int queryret;
         if (send && sendto(sockfd, sendBuf, BUFSIZE, 0, 
-            (struct sockaddr*)&dnsAddr, &slen) == -1)
+            (struct sockaddr*)&dnsAddr, (socklen_t)len) == -1)
         {
             goto resolve_fail_close;
         }
@@ -321,7 +326,6 @@ int resolve(const char *node, const char *service,
 resolve_fail_close:
     close(sockfd);
 resolve_final:
-    free(pak);
     return ret;
 }
 

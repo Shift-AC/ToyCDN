@@ -91,14 +91,14 @@ static inline char *strerrorV(int num, char *buf)
 
 static inline unsigned int alarmWithLog(unsigned long useconds)
 {
-    struct itimerval tv;
+    struct itimerval tc;
     tc.it_value.tv_sec = useconds / 1000000;
     tc.it_value.tv_usec = useconds % 1000000;
     tc.it_interval.tv_sec = 0;
     tc.it_interval.tv_usec = 0;
 
-    logVerboseL(3, "Alarm %d.%ds", tc.it_value.tv_sec, tc.it_value.tv_usec);
-    return setitimer(ITIMER_REAL, &tv, NULL);
+    logVerboseL(3, "Alarm %ld.%lds", tc.it_value.tv_sec, tc.it_value.tv_usec);
+    return setitimer(ITIMER_REAL, &tc, NULL);
 }
 
 static inline void redirectLogTo(char *path)
@@ -124,9 +124,9 @@ static inline void redirectLogTo(char *path)
 static inline int unalarm()
 {
     struct itimerval tv;
-    memset(tv, 0, sizeof(tv));
+    memset(&tv, 0, sizeof(tv));
 
-    logVerboseL(3, "Alarm cancelled!", tc.it_value.tv_sec, tc.it_value.tv_usec);
+    logVerboseL(3, "Alarm cancelled!");
     return setitimer(ITIMER_REAL, &tv, NULL);
 }
 

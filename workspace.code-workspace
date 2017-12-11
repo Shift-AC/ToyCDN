@@ -1,0 +1,15 @@
+{
+	"folders": [
+		{
+			"path": "."
+		},
+		{
+			"path": "D:\\Programming\\GitHub\\HSRNet"
+		}
+	],
+	"settings": {
+		"files.associations": {
+			"util.h": "c"
+		}
+	}
+}

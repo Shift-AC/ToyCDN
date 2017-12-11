@@ -18,7 +18,7 @@ char *usage =
     "  LSAs(required when -r is not specified):\n"
     "    The file containing the LSA information.\n";
     
-#define MAX_ATTEMPT 20
+#define MAX_RETRY 20
 #define MAX_HOST 128
 #define MAX_LSABUF 1024
 #define BUFSIZE 8192
@@ -26,18 +26,18 @@ char *usage =
 static struct lsabuf_t
 {
 	unsigned int addr;
-	int seq; 
+	unsigned int seq; 
 	unsigned int neighbor[MAX_HOST];
 	int neighborCount;
 }lsabuf[MAX_LSABUF];
 static int lsaCount = 0;
 
 static int port = 0;
-static char *path;
 static int connfd;
 static struct sockaddr_in serverInfo, clientInfo;
 static socklen_t len = sizeof(struct sockaddr_in);
 static byte sendBuf[BUFSIZE];
+static int sendLen;
 static byte recvBuf[BUFSIZE];
 static FILE *outputFile;
 static unsigned int servers[MAX_HOST];
@@ -49,14 +49,16 @@ static int dist[MAX_HOST];
 static int used[MAX_HOST];
 static int useRR = 0;
 
-static int compareServer(const unsigned int *a, const unsigned int *b)
+static int compareServer(const void *a, const void *b)
 {
-	return *a - *b;
+	return *(const unsigned int*)a - *(const unsigned int*)b;
 }
 
-static int compareLSABuf(const struct lsabuf_t *a, const struct lsabuf_t *b)
+static int compareLSABuf(const void *ta, const void *tb)
 {
-	return a->addr == b->addr ? b.seq - a.seq : a->addr - b->addr;
+	const struct lsabuf_t *a = ta;
+	const struct lsabuf_t *b = tb;
+	return a->addr == b->addr ? b->seq - a->seq : a->addr - b->addr;
 }
 
 static void initServers(const char *path)
@@ -81,7 +83,7 @@ static void initServers(const char *path)
 		++lc;
 	}
 
-	is.close();
+	fclose(is);
 }
 
 static int binarySearch(const unsigned int *arr, int len, unsigned int tgt)
@@ -177,7 +179,7 @@ static char* parseLSALine(
 
 static void initHosts()
 {
-	qsort(lsabuf, lsaCount, sizeof(lsabuf_t), compareLSABuf);
+	qsort(lsabuf, lsaCount, sizeof(struct lsabuf_t), compareLSABuf);
 
 	for (int i = 0; i < lsaCount; ++i)
 	{
@@ -243,7 +245,7 @@ static void initLSA(const char *path)
 		}
 	}
 
-	is.close();
+	fclose(is);
 }
 
 static void dijkstra(unsigned int addr)
@@ -289,6 +291,8 @@ static void dijkstra(unsigned int addr)
 
 static void parseArguments(int argc, char **argv)
 {
+	argc = argc + 1 - 1;
+
     if (!strcmp(argv[1], "-r"))
 	{
 		useRR = 1;
@@ -308,7 +312,7 @@ static void parseArguments(int argc, char **argv)
 		logFatal("Invalid serverIP %s", argv[3]);
 	}
 	serverInfo.sin_addr.s_addr = htonl(INADDR_ANY);
-	serverinfo.sin_family = AF_INET;
+	serverInfo.sin_family = AF_INET;
 	serverInfo.sin_port = htons(atoi(argv[4]));
 
 	initServers(argv[5]);
@@ -319,12 +323,107 @@ static void parseArguments(int argc, char **argv)
 	}
 }
 
+static unsigned int roundRobin()
+{
+	static int pos = 0;
+
+	pos = pos == serverCount ? 0 :pos;
+
+	return hosts[servers[pos++]];
+}
+
+static unsigned int locationAware()
+{
+	unsigned int client = *(unsigned int*)&clientInfo.sin_addr;
+	int ci;
+	int mi;
+	if ((ci = binarySearch(hosts, hostCount, client)) == -1)
+	{
+		return roundRobin();
+	}
+
+	dijkstra(ci);
+	
+	mi = 0;
+	for (int i = 1; i < serverCount; ++i)
+	{
+		if (dist[i] == -1)
+		{
+			continue;
+		}
+		if (dist[servers[mi]] == -1 || dist[i] < dist[servers[mi]])
+		{
+			mi = i;
+		}
+	}
+	return hosts[servers[mi]];
+
+}
+
+static inline unsigned int chooseServer()
+{
+	if (useRR)
+	{
+		return roundRobin();
+	}
+	else
+	{
+		return locationAware();
+	}
+}
+
 static void parseRequest()
 {
-	struct dnshdr *rhdr = (struct dnshdr*)recvBuf;
 	struct dnshdr *shdr = (struct dnshdr*)sendBuf;
+	char *ans;
+	char buf[BUFSIZE];
+	int qtype;
+	int qclass;
 
+	memcpy(sendBuf, recvBuf, BUFSIZE);
+	qntoa(buf, (const char*)(recvBuf + sizeof(struct dnshdr)));
+	ans = (char*)sendBuf + sizeof(struct dnshdr) + strlen(buf) + 1;
+	qtype = *(ans++) << 8;
+	qtype |= *(ans++);
+	qclass = *(ans++) << 8;
+	qclass |= *(ans++);
 	
+	shdr->aa = 1;
+	shdr->qr = 1;
+	shdr->tc = 0;
+	shdr->ra = 0;
+
+	if (strcmp(buf, "video.pku.edu.cn") || qclass != 1 || qtype != 1)
+	{
+		shdr->rcode = 3;
+		shdr->ancount = 0;
+	}
+	else
+	{
+		unsigned int server = chooseServer();
+		shdr->rcode = 0;
+		shdr->ancount = 1;
+		ans = qntoa(ans, "video.pku.edu.cn");
+		// type
+		*(ans++) = 0;
+		*(ans++) = 1;
+		// class
+		*(ans++) = 0;
+		*(ans++) = 1;
+		//ttl
+		*(ans++) = 0;
+		*(ans++) = 0;
+		// rdlen
+		*(ans++) = 0;
+		*(ans++) = 4;
+		// rdata
+		*(ans++) = server >> 24;
+		*(ans++) = server >> 16;
+		*(ans++) = server >> 8;
+		*(ans++) = server;
+
+		sendLen = (ans - (char*)sendBuf) + 1;
+	}
 }
 
 static void initConnection()
@@ -336,7 +435,7 @@ static void initConnection()
 	memset(&serverInfo, 0, sizeof(serverInfo));
 	close(connfd);
 
-	for (; attempt <= MAX_ATTEMPT; ++attempt)
+	for (; attempt <= MAX_RETRY; ++attempt)
 	{
 		if ((connfd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)) == -1)
 		{
@@ -356,7 +455,7 @@ static void initConnection()
 		break;
 	}
 
-	if (attempt > MAX_ATTEMPT)
+	if (attempt > MAX_RETRY)
 	{
 		logFatal("%d fails in initConnection, exit.", attempt);
 	}
@@ -379,8 +478,6 @@ int main(int argc, char **argv)
 
 	while (1)
 	{
-		long x;	
-		
 		if (reinit)
 		{
 			initConnection();
@@ -401,7 +498,7 @@ int main(int argc, char **argv)
 
         parseRequest();
 
-		if (sendto(connfd, sendBuf, BUFSIZE, 0, 
+		if (sendto(connfd, sendBuf, sendLen, 0, 
 			(struct sockaddr *)&clientInfo, len) == -1)
 		{
 			logError("Socket broken when sending(%s), trying to restart...",
@@ -410,8 +507,8 @@ int main(int argc, char **argv)
 			continue;
 		}
 
-		logMessage("Packet #%ld sent to %s:%d(total %ld)", x,
-			inet_ntoa(clientInfo.sin_addr), (int)clientInfo.sin_port, ++sent);
+		logMessage("Packet sent to %s:%d",
+			inet_ntoa(clientInfo.sin_addr), (int)clientInfo.sin_port);
 	}
 
 	close(connfd);
