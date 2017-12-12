@@ -22,13 +22,14 @@ char *usage =
 #define MAX_HOST 128
 #define MAX_LSABUF 1024
 #define BUFSIZE 8192
+#define MAX_NAME 128
 
 static struct lsabuf_t
 {
     unsigned int addr;
     unsigned int seq; 
-    unsigned int neighbor[MAX_HOST];
-    int neighborCount;
+    unsigned int nb[MAX_HOST];
+    int nbCount;
 }lsabuf[MAX_LSABUF];
 static int lsaCount = 0;
 
@@ -48,6 +49,8 @@ static int map[MAX_HOST][MAX_HOST];
 static int dist[MAX_HOST];
 static int used[MAX_HOST];
 static int useRR = 0;
+static char rawNames[MAX_HOST][MAX_NAME];
+static int rawNameCount;
 
 static int compareServer(const void *a, const void *b)
 {
@@ -128,12 +131,41 @@ static int find(const char *str, const char c)
     return -1;
 }
 
+static int ston(const char *name, struct in_addr* paddr)
+{
+    char ipbuf[64];
+    int ret = inet_aton(name, paddr);
+    if (ret == 0)
+    {
+        logVerboseL(3, "Invalid IP address, mapping it to 233.233.233.*");
+        int ind = 0;
+        for (ind = 0; ind < rawNameCount; ++ind)
+        {
+            if (!strcmp(name, rawNames[ind]))
+            {
+                sprintf(ipbuf, "233.233.233.%d", ind);
+                logVerboseL(3, "Found previous record on %s.", ipbuf);
+                return inet_aton(ipbuf, paddr);
+            }
+        }
+        strcpy(rawNames[rawNameCount], name);
+        sprintf(ipbuf, "233.233.233.%d", rawNameCount++);
+        logVerboseL(3, "Create new record on %s.", ipbuf);
+        return inet_aton(ipbuf, paddr);        
+    }
+    return ret;
+}
+
 static char* parseLSALine(
     char *line, struct lsabuf_t *buf, int ln, const char *path)
 {
     int pos = find(line, ' ');
     int lpos;
     char *inf;
+
+    line[strlen(line) - 1] = 0;
+
+    logVerbose("Parsing LSA line #%d: %s", ln, line);
 
     if (pos == -1)
     {
@@ -142,12 +174,12 @@ static char* parseLSALine(
     }
     line[pos] = 0;
 
-    if (inet_aton(line, (struct in_addr*)&buf->addr) == 0)
+    if (ston(line, (struct in_addr*)&buf->addr) == 0)
     {
         logFatal("Syntax error in LSA file %s line %d(Invalid source IP)!", 
             path, ln);
     }
-    logVerbose("LSA source #%d; %s", ln, line);
+    logVerbose("  LSA source #%d: %s", ln, line);
 
     lpos = pos + 1;
     if ((pos = find(line + lpos, ' ')) == -1)
@@ -157,10 +189,10 @@ static char* parseLSALine(
     }
     line[lpos + pos] = 0;
     buf->seq = atoi(line + lpos);
-    logVerbose("  ->seq: %d", buf->seq);
+    logVerbose("    ->seq: %d", buf->seq);
 
     inf = line + lpos + pos + 1;
-    buf->neighborCount = 0;
+    buf->nbCount = 0;
     while (*inf)
     {
         int pos = find(inf, ',');
@@ -168,14 +200,19 @@ static char* parseLSALine(
         {
             inf[pos] = 0;	
         }
-        if (inet_aton(inf, 
-            (struct in_addr*)&(buf->neighbor[buf->neighborCount++])) == 0)
+        if (ston(inf, (struct in_addr*)&(buf->nb[buf->nbCount++])) 
+            == 0)
         {
             logFatal(
                 "Syntax error in LSA file %s line %d(Invalid neighbor IP)!", 
                 path, ln);
         }
-        logVerbose("  ->neighbor[%d]: %s", buf->neighborCount, inf);
+        logVerbose("    ->nb[%d]: %s(%s)", buf->nbCount, inf,
+            inet_ntoa(*(struct in_addr*)&(buf->nb[buf->nbCount - 1])));
+        if (pos == -1)
+        {
+            break;
+        }
         inf += pos + 1;
     }
 
@@ -190,10 +227,14 @@ static void initHosts()
     {
         if (!i || lsabuf[i].addr != lsabuf[i - 1].addr)
         {
+            logVerboseL(2, "Using latest LSA information(%d) of %s", 
+                lsabuf[i].seq, inet_ntoa(*(struct in_addr*)&lsabuf[i].addr));
             hosts[hostCount++] = lsabuf[i].addr;
-            for (int j = 0; j < lsabuf[i].neighborCount; ++j)
+            for (int j = 0; j < lsabuf[i].nbCount; ++j)
             {
-                hosts[hostCount++] = lsabuf[i].neighbor[j];
+                logVerboseL(2, "  ->neighbor[%d]: %s", j,
+                    inet_ntoa(*(struct in_addr*)&lsabuf[i].nb[j]));
+                hosts[hostCount++] = lsabuf[i].nb[j];
             }
         }
     }
@@ -213,7 +254,22 @@ static void initHosts()
 
     for (int i = 0; i < serverCount; ++i)
     {
+        struct in_addr sv = *(struct in_addr*)&servers[i];
         servers[i] = binarySearch(hosts, hostCount, servers[i]);
+        if (servers[i] == (unsigned int)-1)
+        {
+            logWarning("Server %d(%s) not found in network topology!", i,
+                inet_ntoa(sv));
+        }
+        else
+        {
+            logVerbose("server[%d](%s) at %d", i, inet_ntoa(sv), servers[i]);
+        }
+    }
+    logVerbose("Dump mapping information:");
+    for (int i = 0; i < rawNameCount; ++i)
+    {
+        logVerbose("  ->%s: 233.233.233.%d", rawNames[i], i);
     }
 }
 
@@ -242,10 +298,10 @@ static void initLSA(const char *path)
         {
             unsigned int addr = lsabuf[i].addr;
             int pos = binarySearch(hosts, hostCount, addr);
-            for (int j = 0; j < lsabuf[i].neighborCount; ++j)
+            for (int j = 0; j < lsabuf[i].nbCount; ++j)
             {
                 int ipos = binarySearch(hosts, hostCount, 
-                    lsabuf[i].neighbor[j]);
+                    lsabuf[i].nb[j]);
                 map[pos][ipos] = 1;
                 map[ipos][pos] = 1;
             }
@@ -298,36 +354,41 @@ static void dijkstra(unsigned int addr)
 
 static void parseArguments(int argc, char **argv)
 {
+    int apos = 0;
     argc = argc + 1 - 1;
 
-    if (!strcmp(argv[1], "-r"))
+    if (!strcmp(argv[++apos], "-r"))
     {
         useRR = 1;
     }
-
-    if (strcmp(argv[2], "!"))
+    else
     {
-        outputFile = fopen(argv[2], "r");
+        --apos;
+    }
+
+    if (strcmp(argv[++apos], "!"))
+    {
+        outputFile = fopen(argv[apos], "r");
     }
     else
     {
         outputFile = stdout;
     }
 
-    if (inet_aton(argv[3], &serverInfo.sin_addr) == 0)
+    if (inet_aton(argv[++apos], &serverInfo.sin_addr) == 0)
     {
-        logFatal("Invalid serverIP %s", argv[3]);
+        logFatal("Invalid serverIP %s", argv[apos]);
     }
     //serverInfo.sin_addr.s_addr = htonl(INADDR_ANY);
     serverInfo.sin_family = AF_INET;
-    port = atoi(argv[4]);
+    port = atoi(argv[++apos]);
     serverInfo.sin_port = htons(port);
 
-    initServers(argv[5]);
+    initServers(argv[++apos]);
 
     if (!useRR)
     {
-        initLSA(argv[6]);
+        initLSA(argv[++apos]);
     }
 }
 
@@ -342,29 +403,42 @@ static unsigned int roundRobin()
 
 static unsigned int locationAware()
 {
-    //static int pos = 0;
+    static int pos = 0;
     unsigned int client = *(unsigned int*)&clientInfo.sin_addr;
     int ci;
     int mi;
     if ((ci = binarySearch(hosts, hostCount, client)) == -1)
     {
-        /*
-        // fallback to round-robin
-        pos = pos == serverCount ? 0 :pos;
-        return hosts[servers[pos++]];*/
-        ci = hosts[0];
+        logWarning("Client not in the network!");
+        
+        pos = pos == hostCount ? 0 : pos;
+        ci = hosts[pos++];
+        logVerbose("Choose a client IP(%d, %s) using round-robin...", 
+            pos - 1, inet_ntoa(*(struct in_addr*)&ci));
     }
 
     dijkstra(ci);
-    
+    logVerboseL(2, "Dump mapping information:");
+    for (int i = 0; i < rawNameCount; ++i)
+    {
+        logVerboseL(2, "  ->%s: 233.233.233.%d", rawNames[i], i);
+    }
+    logVerboseL(2, "Dump distance information:");
+    for (int i = 0; i < hostCount; ++i)
+    {
+        logVerboseL(2, "  ->%d(%s): %d", i, 
+            inet_ntoa(*(struct in_addr*)&hosts[i]), dist[i]);
+    }
+
     mi = 0;
     for (int i = 1; i < serverCount; ++i)
     {
-        if (dist[i] == -1)
+        if (dist[servers[i]] == -1)
         {
             continue;
         }
-        if (dist[servers[mi]] == -1 || dist[i] < dist[servers[mi]])
+        if (dist[servers[mi]] == -1 || 
+            dist[servers[i]] < dist[servers[mi]])
         {
             mi = i;
         }
@@ -492,7 +566,7 @@ int main(int argc, char **argv)
         printUsageAndExit(argv);
     }
 
-    verbose = 10;
+    verbose = 2;
     initLog();
     printInitLog();
 

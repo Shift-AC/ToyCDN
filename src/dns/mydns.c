@@ -310,7 +310,8 @@ int resolve(const char *node, const char *service,
         goto resolve_final;
     }
 
-    if (find(node, '.') == -1)
+    if (find(node, '.') == -1 || 
+        node[0] == '.' || node[strlen(node) - 1] == '.')
     {
         logVerbose("Invalid host name %s.", node);
         goto resolve_final;
@@ -440,37 +441,36 @@ void dumpDNSPacket(const void *pak, int len)
     int i;
     const char *pos;
     char namebuf[BUFSIZE];
-    logMessage("Dumping packet with len=%d", len);
-    logMessage("Packet header:");
-    logMessage("  ->id: %x", hdr->id);
-    logMessage("  ->rcode: %x", hdr->rcode);
-    logMessage("  ->z: %x", hdr->z);
-    logMessage("  ->ra: %x", hdr->ra);
-    logMessage("  ->rd: %x", hdr->rd);
-    logMessage("  ->tc: %x", hdr->tc);
-    logMessage("  ->aa: %x", hdr->aa);
-    logMessage("  ->opcode: %x", hdr->opcode);
-    logMessage("  ->qr: %u", hdr->qr);
-    logMessage("  ->qdcount: %u", hdr->qdcount);
-    logMessage("  ->ancount: %u", hdr->ancount);
-    logMessage("  ->nscount: %u", hdr->nscount);
-    logMessage("  ->arcount: %u", hdr->arcount);
+    logVerbose("Dumping packet with len=%d", len);
+    logVerbose("Packet header:");
+    logVerbose("  ->id: %x", hdr->id);
+    logVerbose("  ->rcode: %x", hdr->rcode);
+    logVerbose("  ->z: %x", hdr->z);
+    logVerbose("  ->ra: %x", hdr->ra);
+    logVerbose("  ->rd: %x", hdr->rd);
+    logVerbose("  ->tc: %x", hdr->tc);
+    logVerbose("  ->aa: %x", hdr->aa);
+    logVerbose("  ->opcode: %x", hdr->opcode);
+    logVerbose("  ->qr: %u", hdr->qr);
+    logVerbose("  ->qdcount: %u", hdr->qdcount);
+    logVerbose("  ->ancount: %u", hdr->ancount);
+    logVerbose("  ->nscount: %u", hdr->nscount);
+    logVerbose("  ->arcount: %u", hdr->arcount);
 
     pos = (const char*)pak + sizeof(struct dnshdr);
     for (i = 0; i < hdr->qdcount; ++i)
     {
         int qtype;
         int qclass;
-        logMessage("  ->Message #%d:", i);
+        logVerbose("  ->Message #%d:", i);
         pos = qntoa(namebuf, pos);
         qtype = (*(pos++) & 0x000000FFL) << 8;
         qtype |= *(pos++) & 0x000000FFL;
         qclass = (*(pos++) & 0x000000FFL) << 8;
         qclass |= *(pos++) & 0x000000FFL;
-        logMessage("    ->name: %s", namebuf);
-        logMessage("    ->qtype: %x", qtype);
-        logMessage("    ->qclass: %x", qclass);
-        break;
+        logVerbose("    ->name: %s", namebuf);
+        logVerbose("    ->qtype: %x", qtype);
+        logVerbose("    ->qclass: %x", qclass);
     }
 
     for (i = 0; i < hdr->ancount; ++i)
@@ -480,7 +480,7 @@ void dumpDNSPacket(const void *pak, int len)
         int ttl;
         int rdlength;
         char *rd = namebuf;
-        logMessage("  ->Answer #%d", i);
+        logVerbose("  ->Answer #%d", i);
         pos = qntoa(namebuf, pos);
         type = (*(pos++) & 0x000000FFL) << 8;
         type |= *(pos++) & 0x000000FFL;
@@ -490,18 +490,17 @@ void dumpDNSPacket(const void *pak, int len)
         ttl |= *(pos++) & 0x000000FFL;
         rdlength = (*(pos++) & 0x000000FFL) << 8;
         rdlength |= *(pos++) & 0x000000FFL;
-        logMessage("    ->name: %s", namebuf);
-        logMessage("    ->type: %x", type);
-        logMessage("    ->class: %x", class);
-        logMessage("    ->ttl: %d", ttl);
-        logMessage("    ->rdlength: %d", rdlength);
+        logVerbose("    ->name: %s", namebuf);
+        logVerbose("    ->type: %x", type);
+        logVerbose("    ->class: %x", class);
+        logVerbose("    ->ttl: %d", ttl);
+        logVerbose("    ->rdlength: %d", rdlength);
         strcpy(rd, "    ->rd:");
         for (int i = 0; i < rdlength; ++i)
         {
             rd += strlen(rd);
             sprintf(rd, " %x", *(pos++));
         }
-        logMessage("%s", namebuf);
-        break;
+        logVerbose("%s", namebuf);
     }
 }

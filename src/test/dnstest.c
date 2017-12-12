@@ -26,12 +26,16 @@ int main()
     verbose = 10;
     initLog();
     printInitLog();
-    init_mydns("222.29.98.72", 23333, "222.29.98.44");
+    init_mydns("127.0.0.1", 23333, "127.0.0.1");
 
     while (fgets(line, 1024, stdin) != NULL)
     {
         struct addrinfo *res;
         line[strlen(line) - 1] = 0;
+        if (line[0] == 0)
+        {
+            strcpy(line, "video.pku.edu.cn");
+        }
         if (resolve(line, "80", NULL, &res) != -1)
         {
             printAddrList(res);

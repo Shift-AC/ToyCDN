@@ -1,9 +1,13 @@
 # Auto generated file, modify if you want to add functions.
 
 .PHONY: all
-all: clean
+all: init clean
 	make -C src TARGET=../bin
 	cp bin/nameserver bin/dnstest .
+
+.PHONY: init
+init:
+	-mkdir bin
 
 .PHONY: clean
 clean:
