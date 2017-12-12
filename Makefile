@@ -2,7 +2,7 @@
 
 .PHONY: all
 all:
-	make -C src TARGET=..
+	make -C src TARGET=../bin
 
 .PHONY: clean
 clean:

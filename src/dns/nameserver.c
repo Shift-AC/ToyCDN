@@ -506,14 +506,12 @@ int main(int argc, char **argv)
             reinit = 1;
             continue;
         }
-        dumpDNSPacket(recvBuf, recvLen);
-
         logMessage("Packet received from %s:%d",
             inet_ntoa(clientInfo.sin_addr), (int)clientInfo.sin_port);
+        dumpDNSPacket(recvBuf, recvLen);
 
         parseRequest();
 
-        dumpDNSPacket(sendBuf, sendLen);
         if (sendto(connfd, sendBuf, sendLen, 0, 
             (struct sockaddr *)&clientInfo, len) == -1)
         {
@@ -525,6 +523,7 @@ int main(int argc, char **argv)
 
         logMessage("Packet sent to %s:%d",
             inet_ntoa(clientInfo.sin_addr), (int)clientInfo.sin_port);
+        dumpDNSPacket(sendBuf, sendLen);
     }
 
     close(connfd);

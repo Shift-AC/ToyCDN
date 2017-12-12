@@ -113,7 +113,7 @@ char *qntoa(char *dest, const char *src)
         dest[-1] = *src ? '.' : '\0';
     }
 
-    return dest;
+    return src;
 }
 
 static int generateRequest(const char *node, const char *service, void *pak)
@@ -122,7 +122,7 @@ static int generateRequest(const char *node, const char *service, void *pak)
     static const word qtype = 1;
     static const word qclass = 1;
     struct dnshdr* hdr = (struct dnshdr*)pak;
-    char *qname = (char*)(pak + sizeof(struct dnshdr));
+    char *qname = (char*)pak + sizeof(struct dnshdr);
 
     // make gcc happy
     service = service + 1 - 1;
@@ -329,6 +329,7 @@ int resolve(const char *node, const char *service,
             if (errno == EAGAIN || errno == EWOULDBLOCK)
             {
                 logVerbose("Seems like a timeout, retry.");
+                send = 1;
                 continue;
             }
             logVerbose("Can't receive packet(%s), return.", 
@@ -437,6 +438,7 @@ void dumpDNSPacket(const void *pak, int len)
         logMessage("    ->name: %s", namebuf);
         logMessage("    ->qtype: %x", qtype);
         logMessage("    ->qclass: %x", qclass);
+        break;
     }
 
     for (i = 0; i < hdr->ancount; ++i)
@@ -468,5 +470,6 @@ void dumpDNSPacket(const void *pak, int len)
             sprintf(rd, " %x", *(pos++));
         }
         logMessage("%s", namebuf);
+        break;
     }
 }
