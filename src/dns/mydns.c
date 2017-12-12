@@ -102,7 +102,7 @@ char *atoqn(char *dest, const char *src)
     return dest + 1;
 }
 
-char *qntoa(char *dest, const char *src)
+const char *qntoa(char *dest, const char *src)
 {
     while (*src)
     {
@@ -191,7 +191,7 @@ static int generateAddrinfo(const void *rpak, int off, struct addrinfo **res,
     const char *service)
 {
     struct dnshdr* rhdr = (struct dnshdr*)rpak;
-    char *pos = (char*)(rpak + off);
+    const char *pos = (char*)(rpak + off);
     word i = 0;
     struct addrinfo *ite;
     char buf[BUFSIZE];

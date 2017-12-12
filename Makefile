@@ -1,12 +1,13 @@
 # Auto generated file, modify if you want to add functions.
 
 .PHONY: all
-all:
+all: clean
 	make -C src TARGET=../bin
+	cp bin/nameserver bin/dnstest .
 
 .PHONY: clean
 clean:
-	rm nameserver dnstest
+	-rm nameserver dnstest
 	make -C src clean
 
 README: README.md

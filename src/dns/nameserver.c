@@ -411,7 +411,8 @@ static void parseRequest()
         struct timeval now;
         shdr->rcode = 0;
         shdr->ancount = 1;
-        ans = qntoa(ans, "video.pku.edu.cn");
+        qntoa(ans, "video.pku.edu.cn");
+        ans += strlen(ans);
         // type
         *(ans++) = 0;
         *(ans++) = 1;
