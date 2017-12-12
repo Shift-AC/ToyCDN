@@ -187,6 +187,20 @@ static inline int isFailed(const void *spak, const void *rpak, int len)
     return 0;
 }
 
+static int find(const char *str, const char c)
+{
+    const char *st = str;
+    do
+    {
+        if (c == *str)
+        {
+            return str - st;
+        }
+    }
+    while (*(str++));
+
+    return -1;
+}
 static int generateAddrinfo(const void *rpak, int off, struct addrinfo **res,
     const char *service)
 {
@@ -201,6 +215,7 @@ static int generateAddrinfo(const void *rpak, int off, struct addrinfo **res,
     while (i < rhdr->ancount)
     {
         word type, class, ttl, rdlength;
+        dword server;
         memset(ite, 0, sizeof(struct addrinfo));
         ite->ai_flags = AI_V4MAPPED | AI_ADDRCONFIG;
         ite->ai_family = AF_INET;
@@ -228,6 +243,12 @@ static int generateAddrinfo(const void *rpak, int off, struct addrinfo **res,
         ite->ai_addr = (struct sockaddr*)malloc(sizeof(struct sockaddr));
         ((struct sockaddr_in*)ite->ai_addr)->sin_family = AF_INET;
         ((struct sockaddr_in*)ite->ai_addr)->sin_port = htons(atoi(service));
+        server = (*(pos++) & 0x000000FFL) << 24;
+        server |= (*(pos++) & 0x000000FFL) << 16;
+        server |= (*(pos++) & 0x000000FFL) << 8;
+        server |= *(pos++) & 0x000000FFL;
+        ((struct sockaddr_in*)ite->ai_addr)->sin_addr = 
+            *(struct in_addr*)&server;
         memcpy(ite->ai_addr + 4, pos, 4);
 
         if (++i != rhdr->ancount)
@@ -289,7 +310,7 @@ int resolve(const char *node, const char *service,
         goto resolve_final;
     }
 
-    if (find(node, '.') == NULL)
+    if (find(node, '.') == -1)
     {
         logVerbose("Invalid host name %s.", node);
         goto resolve_final;
@@ -350,20 +371,25 @@ int resolve(const char *node, const char *service,
             send = 0;
             continue;
         }
+        logVerbose("Got reply packet.");
 
         if ((queryret = isFailed(sendBuf, recvBuf, len)) != 0)
         {
             logVerbose("Query failed, return.");
             goto resolve_fail_close;
         }
+        logVerbose("Successfully got response, generating addrinfo...");
 
-        if (generateAddrinfo(recvBuf, len, res, service) != -1)
+        if (generateAddrinfo(recvBuf, len, res, service) == -1)
         {
             logVerbose("Failed to generate result, return.");
+            goto resolve_fail_close;
+        }
+        else
+        {
+            logVerbose("Success.");
             break;
         }
-
-        send = 1;
     }
 
     if (attempt <= MAX_ATTEMPT)

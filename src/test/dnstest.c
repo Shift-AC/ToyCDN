@@ -11,9 +11,9 @@ void printAddrList(struct addrinfo *ite)
         logMessage("IP address of %s: %s", ite->ai_canonname, 
             inet_ntoa(((struct sockaddr_in*)ite->ai_addr)->sin_addr));
         logVerbose("  ->port: %d", 
-            ((struct sockaddr_in*)ite->ai_addr)->sin_port);
+            ntohs(((struct sockaddr_in*)ite->ai_addr)->sin_port));
         logVerbose("  ->family: %d", ite->ai_addr->sa_family);
-        logVerbose("  ->flags: %d", ite->ai_flags);
+        logVerbose("  ->flags: %x", ite->ai_flags);
         logVerbose("  ->socktype: %d", ite->ai_socktype);
         ite = ite->ai_next;
     }
@@ -30,12 +30,12 @@ int main()
 
     while (fgets(line, 1024, stdin) != NULL)
     {
-        struct addrinfo **res = NULL;
+        struct addrinfo *res;
         line[strlen(line) - 1] = 0;
-        if (resolve(line, "80", NULL, res) != -1)
+        if (resolve(line, "80", NULL, &res) != -1)
         {
-            printAddrList(*res);
-            mydns_freeaddrinfo(*res);
+            printAddrList(res);
+            mydns_freeaddrinfo(res);
         }
         else
         {

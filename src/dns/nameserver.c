@@ -75,6 +75,7 @@ static void initServers(const char *path)
 
     while (fgets(line, BUFSIZE, is) != NULL)
     {
+        line[strlen(line) - 1] = 0;
         if (inet_aton(line, (struct in_addr*)&servers[serverCount++]) == 0)
         {
             logFatal("Syntax error in server IP file %s line %d(%s)!",
@@ -336,17 +337,22 @@ static unsigned int roundRobin()
 
     pos = pos == serverCount ? 0 :pos;
 
-    return hosts[servers[pos++]];
+    return servers[pos++];
 }
 
 static unsigned int locationAware()
 {
+    //static int pos = 0;
     unsigned int client = *(unsigned int*)&clientInfo.sin_addr;
     int ci;
     int mi;
     if ((ci = binarySearch(hosts, hostCount, client)) == -1)
     {
-        return roundRobin();
+        /*
+        // fallback to round-robin
+        pos = pos == serverCount ? 0 :pos;
+        return hosts[servers[pos++]];*/
+        ci = hosts[0];
     }
 
     dijkstra(ci);
@@ -369,14 +375,17 @@ static unsigned int locationAware()
 
 static inline unsigned int chooseServer()
 {
+    unsigned int ret;
     if (useRR)
     {
-        return roundRobin();
+        ret = roundRobin();
     }
     else
     {
-        return locationAware();
+        ret = locationAware();
     }
+    logMessage("Server %s chosen.", inet_ntoa(*(struct in_addr*)&ret));
+    return ret;
 }
 
 static void parseRequest()
@@ -388,7 +397,7 @@ static void parseRequest()
     int qclass;
 
     memcpy(sendBuf, recvBuf, BUFSIZE);
-    ans = (char*)qntoa(buf, (const char*)(recvBuf + sizeof(struct dnshdr)));
+    ans = (char*)qntoa(buf, (const char*)(sendBuf + sizeof(struct dnshdr)));
     qtype = *(ans++) << 8;
     qtype |= *(ans++);
     qclass = *(ans++) << 8;
