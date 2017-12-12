@@ -19,12 +19,14 @@ static struct sockaddr_in myAddr;
 int init_mydns(const char *dns_ip, unsigned int dns_port, const char *client_ip){
     if (inet_aton(dns_ip, &dnsAddr.sin_addr) == 0)
     {
+        logVerbose("Invalid dns server IP(%s).", dns_ip);
         return -1;
     }
     dnsAddr.sin_port = htons(dns_port);
 
     if (inet_aton(client_ip, &myAddr.sin_addr) == 0)
     {
+        logVerbose("Invalid client IP(%s).", client_ip);
         return -1;
     }
     myAddr.sin_port = 0;
@@ -37,21 +39,27 @@ static int mydns_netdial()
 {
     socklen_t len = sizeof(struct sockaddr_in);
     int s;
+    char errbuf[256];
 
     s = socket(AF_INET, SOCK_DGRAM, 0);
     if (s < 0) 
     {
+        logVerbose("Can't create socket(%s).", strerrorV(errno, errbuf));
         goto netdial_fail_final;
     }
 
     if (bind(s, (struct sockaddr*)&myAddr, len) < 0)
     {
+        logVerbose("Can't bind socket to given client IP(%s).", 
+            strerrorV(errno, errbuf));
         goto netdial_fail_free;
     }
 
     if (connect(s, (struct sockaddr*)&dnsAddr, len) < 0 && 
         errno != EINPROGRESS) 
     {
+        logVerbose("Can't connect to given server(%s).", 
+            strerrorV(errno, errbuf));
         goto netdial_fail_free;
     }
 
@@ -152,10 +160,12 @@ static inline int isFailed(const void *spak, const void *rpak, int len)
 
     if (rhdr->rcode != 0)
     {
+        logVerbose("Query failed with rcode %d", rhdr->rcode);
         return rhdr->rcode;
     }
     if (rhdr->ancount == 0)
     {
+        logVerbose("Server returning packet with no answers...");
         return FAIL_INVALID;
     }
 
@@ -163,13 +173,13 @@ static inline int isFailed(const void *spak, const void *rpak, int len)
     {
         if (*(char*)spak != *(char*)rpak)
         {
+            logVerbose("Server not answering our question...");
             return FAIL_INVALID;
         }
     }
 
     return 0;
 }
-
 
 static int generateAddrinfo(const void *rpak, int off, struct addrinfo **res,
     const char *service)
@@ -193,14 +203,14 @@ static int generateAddrinfo(const void *rpak, int off, struct addrinfo **res,
         ite->ai_canonname = (char*)malloc(strlen(buf) + 1);
         strcpy(ite->ai_canonname, buf);
 
-        type = (*pos << 8) | *(pos + 1);
-        pos += 2;
-        class = (*pos << 8) | *(pos + 1);
-        pos += 2;
-        ttl = (*pos << 8) | *(pos + 1);
-        pos += 2;
-        rdlength = (*pos << 8) | *(pos + 1);
-        pos += 2;
+        type = (*(pos++) & 0x000000FFL) << 8;
+        type |= *(pos++) & 0x000000FFL;
+        class = (*(pos++) & 0x000000FFL) << 8;
+        class |= *(pos++) & 0x000000FFL;
+        ttl = (*(pos++) & 0x000000FFL) << 8;
+        ttl |= *(pos++) & 0x000000FFL;
+        rdlength = (*(pos++) & 0x000000FFL) << 8;
+        rdlength |= *(pos++) & 0x000000FFL;
 
         if (type != 1 || class != 1 || ttl != 0 || rdlength != 4)
         {
@@ -257,61 +267,86 @@ int resolve(const char *node, const char *service,
     byte *recvBuf = malloc(BUFSIZE);
     socklen_t slen = sizeof(struct sockaddr);
     int len;
+    int rlen;
     int ret = -1;
     int send = 1;
     struct timeval timeout = {
         RTO_IN_US / 1000000, RTO_IN_US % 1000000 }; 
+    char errorbuf[256];
 
     hints = hints + 1 - 1;
 
-    if ((len = generateRequest(node, service, sendBuf)) == 0)
+    if (node == NULL || service == NULL)
     {
+        logVerbose("Using empty node(%s) or service(%s) string, return.",
+            node, service);
         goto resolve_final;
     }
 
+    logVerbose("Resolving IP address of %s:%s...", node, service);
+
+    if ((len = generateRequest(node, service, sendBuf)) == 0)
+    {
+        logVerbose("Failed to generate request, return.");
+        goto resolve_final;
+    }
+    dumpDNSPacket(sendBuf, len);
+
     if ((sockfd = mydns_netdial() == -1))
     {
+        logVerbose("Can't connect to name server, return.");
         goto resolve_final;
     } 
 
     if (setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, 
         (char*)&timeout, sizeof(struct timeval)) == -1)
     {
+        logVerbose("Can't set socket receive timeout(%s), return.", 
+            strerrorV(errno, errorbuf));
         goto resolve_final;
     }
 
     for (; attempt <= MAX_ATTEMPT; attempt += send)
     {
         int queryret;
-        if (send && sendto(sockfd, sendBuf, BUFSIZE, 0, 
-            (struct sockaddr*)&dnsAddr, (socklen_t)len) == -1)
+        if (send && sendto(sockfd, sendBuf, len, 0, 
+            (struct sockaddr*)&dnsAddr, (socklen_t)slen) == -1)
         {
+            logVerbose("Can't send packet(%s), return.", 
+                strerrorV(errno, errorbuf));
             goto resolve_fail_close;
         }
 
-        if (recvfrom(sockfd, recvBuf, BUFSIZE, 0, 
-            (struct sockaddr*)&dnsAddr, &slen) == -1)
+        if ((rlen = recvfrom(sockfd, recvBuf, BUFSIZE, 0, 
+            (struct sockaddr*)&dnsAddr, &slen)) == -1)
         {
             if (errno == EAGAIN || errno == ECONNREFUSED)
             {
+                logVerbose("Seems like a timeout, ignore.");
                 continue;
             }
+            logVerbose("Can't receive packet(%s), return.", 
+                strerrorV(errno, errorbuf));
             goto resolve_fail_close;
         }
+        dumpDNSPacket(recvBuf, rlen);
 
         if (!isReply(sendBuf, recvBuf))
         {
+            logVerbose("Receiving strange packet, ignore.");
             send = 0;
             continue;
         }
 
         if ((queryret = isFailed(sendBuf, recvBuf, len)) != 0)
         {
+            logVerbose("Query failed, return.");
             goto resolve_fail_close;
         }
 
         if (generateAddrinfo(recvBuf, len, res, service) != -1)
         {
+            logVerbose("Failed to generate result, return.");
             break;
         }
 
@@ -321,6 +356,10 @@ int resolve(const char *node, const char *service,
     if (attempt <= MAX_ATTEMPT)
     {
         ret = 0;
+    }
+    else
+    {
+        logVerbose("Failed for too many times, return.");
     }
 
 resolve_fail_close:
@@ -354,4 +393,74 @@ int mydns_freeaddrinfo(struct addrinfo *p)
     }
 
     return 0;
+}
+
+void dumpDNSPacket(const void *pak, int len)
+{
+    const struct dnshdr *hdr = (const struct dnshdr*)pak;
+    int i;
+    const char *pos;
+    char namebuf[BUFSIZE];
+    logMessage("Dumping packet with len=%d", len);
+    logMessage("Packet header:");
+    logMessage("  ->id: %x", hdr->id);
+    logMessage("  ->rcode: %x", hdr->rcode);
+    logMessage("  ->z: %x", hdr->z);
+    logMessage("  ->ra: %x", hdr->ra);
+    logMessage("  ->rd: %x", hdr->rd);
+    logMessage("  ->tc: %x", hdr->tc);
+    logMessage("  ->aa: %x", hdr->aa);
+    logMessage("  ->opcode: %x", hdr->opcode);
+    logMessage("  ->qr: %u", hdr->qr);
+    logMessage("  ->qdcount: %u", hdr->qdcount);
+    logMessage("  ->ancount: %u", hdr->ancount);
+    logMessage("  ->nscount: %u", hdr->nscount);
+    logMessage("  ->arcount: %u", hdr->arcount);
+
+    pos = (const char*)pak + sizeof(struct dnshdr);
+    for (i = 0; i < hdr->qdcount; ++i)
+    {
+        int qtype;
+        int qclass;
+        logMessage("  ->Message #%d:", i);
+        pos = qntoa(namebuf, pos);
+        qtype = (*(pos++) & 0x000000FFL) << 8;
+        qtype |= *(pos++) & 0x000000FFL;
+        qclass = (*(pos++) & 0x000000FFL) << 8;
+        qclass |= *(pos++) & 0x000000FFL;
+        logMessage("    ->name: %s", namebuf);
+        logMessage("    ->qtype: %x", qtype);
+        logMessage("    ->qclass: %x", qclass);
+    }
+
+    for (i = 0; i < hdr->ancount; ++i)
+    {
+        int type;
+        int class;
+        int ttl;
+        int rdlength;
+        char *rd = namebuf;
+        logMessage("  ->Answer #%d", i);
+        pos = qntoa(namebuf, pos);
+        type = (*(pos++) & 0x000000FFL) << 8;
+        type |= *(pos++) & 0x000000FFL;
+        class = (*(pos++) & 0x000000FFL) << 8;
+        class |= *(pos++) & 0x000000FFL;
+        ttl = (*(pos++) & 0x000000FFL) << 8;
+        ttl |= *(pos++) & 0x000000FFL;
+        rdlength = (*(pos++) & 0x000000FFL) << 8;
+        rdlength |= *(pos++) & 0x000000FFL;
+        logMessage("    ->name: %s", namebuf);
+        logMessage("    ->type: %x", type);
+        logMessage("    ->class: %x", class);
+        logMessage("    ->ttl: %d", ttl);
+        logMessage("    ->rdlength: %d", rdlength);
+        strcpy(rd, "    ->rd:");
+        for (int i = 0; i < rdlength; ++i)
+        {
+            rd += strlen(rd);
+            sprintf(rd, " %x", *(pos++));
+        }
+        logMessage("%s", namebuf);
+    }
 }

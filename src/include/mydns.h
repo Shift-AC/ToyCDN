@@ -90,8 +90,8 @@ int resolve(const char *node, const char *service,
  */
 int mydns_freeaddrinfo(struct addrinfo *p);
 
-
 char *atoqn(char *dest, const char *src);
 char *qntoa(char *dest, const char *src);
+void dumpDNSPacket(const void *pak, int len);
 
 #endif

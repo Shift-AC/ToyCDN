@@ -401,6 +401,7 @@ static void parseRequest()
 	else
 	{
 		unsigned int server = chooseServer();
+		struct timeval now;
 		shdr->rcode = 0;
 		shdr->ancount = 1;
 		ans = qntoa(ans, "video.pku.edu.cn");
@@ -423,6 +424,10 @@ static void parseRequest()
 		*(ans++) = server;
 
 		sendLen = (ans - (char*)sendBuf) + 1;
+
+		gettimeofday(&now, NULL);
+		printf("%ld %s %s %s\n", now.tv_sec, inet_ntoa(clientInfo.sin_addr),
+			buf, inet_ntoa(serverInfo.sin_addr));
 	}
 }
 
@@ -478,26 +483,29 @@ int main(int argc, char **argv)
 
 	while (1)
 	{
+		int recvLen;
 		if (reinit)
 		{
 			initConnection();
 			reinit = 0;
 		}
 		
-		if (recvfrom(connfd, recvBuf, BUFSIZE, 0, 
-			(struct sockaddr*)&clientInfo, &len) == -1)
+		if ((recvLen = recvfrom(connfd, recvBuf, BUFSIZE, 0, 
+			(struct sockaddr*)&clientInfo, &len)) == -1)
 		{
 			logError("Socket broken when receiving(%s), trying to restart...",
 				strerrorV(errno, errbuf));
 			reinit = 1;
 			continue;
 		}
+		dumpDNSPacket(recvBuf, recvLen);
 
 		logMessage("Packet received from %s:%d",
 			inet_ntoa(clientInfo.sin_addr), (int)clientInfo.sin_port);
 
         parseRequest();
 
+		dumpDNSPacket(sendBuf, sendLen);
 		if (sendto(connfd, sendBuf, sendLen, 0, 
 			(struct sockaddr *)&clientInfo, len) == -1)
 		{
