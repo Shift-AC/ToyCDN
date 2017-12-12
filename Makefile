@@ -2,11 +2,11 @@
 
 .PHONY: all
 all:
-	make -C src TARGET=../bin
+	make -C src TARGET=..
 
 .PHONY: clean
 clean:
-	rm -r bin/*
+	rm nameserver dnstest
 	make -C src clean
 
 README: README.md

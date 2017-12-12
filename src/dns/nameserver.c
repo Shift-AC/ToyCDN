@@ -80,6 +80,7 @@ static void initServers(const char *path)
 			logFatal("Syntax error in server IP file %s line %d(%s)!",
 				path, lc, line);
 		}
+                logVerbose("Server #%d: %s", lc, line);
 		++lc;
 	}
 
@@ -145,6 +146,7 @@ static char* parseLSALine(
 		logFatal("Syntax error in LSA file %s line %d(Invalid source IP)!", 
 			path, ln);
 	}
+        logVerbose("LSA source #%d; %s", ln, line);
 
 	lpos = pos + 1;
 	if ((pos = find(line + lpos, ' ')) == -1)
@@ -154,6 +156,7 @@ static char* parseLSALine(
 	}
 	line[lpos + pos] = 0;
 	buf->seq = atoi(line + lpos);
+        logVerbose("  ->seq: %d", buf->seq);
 
 	inf = line + lpos + pos + 1;
 	buf->neighborCount = 0;
@@ -171,6 +174,7 @@ static char* parseLSALine(
 				"Syntax error in LSA file %s line %d(Invalid neighbor IP)!", 
 				path, ln);
 		}
+                logVerbose("  ->neighbor[%d]: %s", buf->neighborCount, inf);
 		inf += pos + 1;
 	}
 
@@ -199,6 +203,8 @@ static void initHosts()
 	{
 		if (hosts[i] != hosts[i - 1])
 		{
+                        logVerbose("host[%d]: %s", pos, 
+                            inet_ntoa(*(struct in_addr*)&hosts[i]));
 			hosts[++pos] = hosts[i];
 		}
 	}
@@ -313,7 +319,8 @@ static void parseArguments(int argc, char **argv)
 	}
 	serverInfo.sin_addr.s_addr = htonl(INADDR_ANY);
 	serverInfo.sin_family = AF_INET;
-	serverInfo.sin_port = htons(atoi(argv[4]));
+	port = atoi(argv[4]);
+	serverInfo.sin_port = htons(port);
 
 	initServers(argv[5]);
 
@@ -426,7 +433,8 @@ static void parseRequest()
 		sendLen = (ans - (char*)sendBuf) + 1;
 
 		gettimeofday(&now, NULL);
-		printf("%ld %s %s %s\n", now.tv_sec, inet_ntoa(clientInfo.sin_addr),
+		fprintf(outputFile, "%ld %s %s %s\n", now.tv_sec, 
+                        inet_ntoa(clientInfo.sin_addr),
 			buf, inet_ntoa(serverInfo.sin_addr));
 	}
 }
@@ -449,7 +457,7 @@ static void initConnection()
 			continue;
 		}
 
-		if (bind(connfd ,(struct sockaddr*)&serverInfo, len) == -1)
+		if (bind(connfd, (struct sockaddr*)&serverInfo, len) == -1)
 		{
 			logError("Attempt %d failed(%s): Can't bind to port!", attempt,
 				strerrorV(errno, errbuf));
@@ -476,6 +484,7 @@ int main(int argc, char **argv)
         printUsageAndExit(argv);
     }
 
+    verbose = 10;
     initLog();
 
     parseArguments(argc, argv);
