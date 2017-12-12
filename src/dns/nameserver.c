@@ -445,7 +445,6 @@ static void initConnection()
     int attempt = 1;
 
     memset(&clientInfo, 0, sizeof(clientInfo));
-    memset(&serverInfo, 0, sizeof(serverInfo));
     close(connfd);
 
     for (; attempt <= MAX_RETRY; ++attempt)
