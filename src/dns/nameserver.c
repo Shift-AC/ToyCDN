@@ -388,8 +388,7 @@ static void parseRequest()
     int qclass;
 
     memcpy(sendBuf, recvBuf, BUFSIZE);
-    qntoa(buf, (const char*)(recvBuf + sizeof(struct dnshdr)));
-    ans = (char*)sendBuf + sizeof(struct dnshdr) + strlen(buf) + 1;
+    ans = (char*)qntoa(buf, (const char*)(recvBuf + sizeof(struct dnshdr)));
     qtype = *(ans++) << 8;
     qtype |= *(ans++);
     qclass = *(ans++) << 8;
@@ -404,6 +403,7 @@ static void parseRequest()
     {
         shdr->rcode = 3;
         shdr->ancount = 0;
+        sendLen = ans - (char*)sendBuf;
     }
     else
     {
@@ -411,8 +411,7 @@ static void parseRequest()
         struct timeval now;
         shdr->rcode = 0;
         shdr->ancount = 1;
-        qntoa(ans, "video.pku.edu.cn");
-        ans += strlen(ans);
+        ans = atoqn(ans, "video.pku.edu.cn");
         // type
         *(ans++) = 0;
         *(ans++) = 1;
@@ -431,7 +430,7 @@ static void parseRequest()
         *(ans++) = server >> 8;
         *(ans++) = server;
 
-        sendLen = (ans - (char*)sendBuf) + 1;
+        sendLen = ans - (char*)sendBuf;
 
         gettimeofday(&now, NULL);
         fprintf(outputFile, "%ld %s %s %s\n", now.tv_sec, 

@@ -113,7 +113,7 @@ const char *qntoa(char *dest, const char *src)
         dest[-1] = *src ? '.' : '\0';
     }
 
-    return src;
+    return src + 1;
 }
 
 static int generateRequest(const char *node, const char *service, void *pak)
@@ -148,7 +148,7 @@ static int generateRequest(const char *node, const char *service, void *pak)
     *(qname++) = qclass >> 8;
     *(qname++) = qclass;
 
-    return (qname - (char*)pak) - 1;
+    return qname - (char*)pak;
 }
 
 static inline int isReply(const void *spak, const void *rpak)
@@ -286,6 +286,12 @@ int resolve(const char *node, const char *service,
     {
         logVerbose("Using empty node(%s) or service(%s) string, return.",
             node, service);
+        goto resolve_final;
+    }
+
+    if (find(node, '.') == NULL)
+    {
+        logVerbose("Invalid host name %s.", node);
         goto resolve_final;
     }
 
