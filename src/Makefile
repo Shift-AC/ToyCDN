@@ -2,7 +2,7 @@
 
 TARGET := ../bin
 CC := gcc
-MACRO := -D "PROGNAME=\"ToyCDN\"" -D "VERSION=\"1.0.0000\""
+MACRO := -D "PROGNAME=\"ToyCDN\"" -D "VERSION=\"1.0.0001\""
 PACKAGE_PREFIX := 
 CFLAGS := $(MACRO) -O2 -Wall -Werror -Wextra -I ./include
 PROG := nameserver dnstest

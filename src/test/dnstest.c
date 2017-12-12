@@ -26,15 +26,20 @@ int main()
     verbose = 10;
     initLog();
     printInitLog();
-    init_mydns("222.29.98.72", 23333, "127.0.0.1");
+    init_mydns("222.29.98.72", 23333, "222.29.98.44");
 
     while (fgets(line, 1024, stdin) != NULL)
     {
         struct addrinfo **res = NULL;
+        line[strlen(line) - 1] = 0;
         if (resolve(line, "80", NULL, res) != -1)
         {
             printAddrList(*res);
             mydns_freeaddrinfo(*res);
+        }
+        else
+        {
+            logVerbose("Failed to resolve.");
         }
     }
 }

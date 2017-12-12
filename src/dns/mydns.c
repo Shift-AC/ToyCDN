@@ -17,12 +17,15 @@ static struct sockaddr_in myAddr;
  * @return 0 on success, -1 otherwise
  */
 int init_mydns(const char *dns_ip, unsigned int dns_port, const char *client_ip){
+    memset(&dnsAddr, 0, sizeof(dnsAddr));
+    memset(&myAddr, 0, sizeof(myAddr));
     if (inet_aton(dns_ip, &dnsAddr.sin_addr) == 0)
     {
         logVerbose("Invalid dns server IP(%s).", dns_ip);
         return -1;
     }
     dnsAddr.sin_port = htons(dns_port);
+    dnsAddr.sin_family = AF_INET;
 
     if (inet_aton(client_ip, &myAddr.sin_addr) == 0)
     {
@@ -30,6 +33,7 @@ int init_mydns(const char *dns_ip, unsigned int dns_port, const char *client_ip)
         return -1;
     }
     myAddr.sin_port = 0;
+    myAddr.sin_family = AF_INET;
 
     return 0;
 }
@@ -48,13 +52,14 @@ static int mydns_netdial()
         goto netdial_fail_final;
     }
 
+/*
     if (bind(s, (struct sockaddr*)&myAddr, len) < 0)
     {
         logVerbose("Can't bind socket to given client IP(%s).", 
             strerrorV(errno, errbuf));
         goto netdial_fail_free;
     }
-
+*/
     if (connect(s, (struct sockaddr*)&dnsAddr, len) < 0 && 
         errno != EINPROGRESS) 
     {
@@ -101,10 +106,11 @@ char *qntoa(char *dest, const char *src)
 {
     while (*src)
     {
-        memcpy(dest, src + 1, *src);
-        dest[(int)*src] = '.';
-        dest += *src + 1;
-        src += *src + 1;
+        int len = *src;
+        memcpy(dest, src + 1, len);
+        dest += len + 1;
+        src += len + 1;
+        dest[-1] = *src ? '.' : '\0';
     }
 
     return dest;
@@ -142,7 +148,7 @@ static int generateRequest(const char *node, const char *service, void *pak)
     *(qname++) = qclass >> 8;
     *(qname++) = qclass;
 
-    return 0;
+    return (qname - (char*)pak) - 1;
 }
 
 static inline int isReply(const void *spak, const void *rpak)
@@ -292,7 +298,7 @@ int resolve(const char *node, const char *service,
     }
     dumpDNSPacket(sendBuf, len);
 
-    if ((sockfd = mydns_netdial() == -1))
+    if ((sockfd = mydns_netdial()) == -1)
     {
         logVerbose("Can't connect to name server, return.");
         goto resolve_final;
@@ -309,8 +315,8 @@ int resolve(const char *node, const char *service,
     for (; attempt <= MAX_ATTEMPT; attempt += send)
     {
         int queryret;
-        if (send && sendto(sockfd, sendBuf, len, 0, 
-            (struct sockaddr*)&dnsAddr, (socklen_t)slen) == -1)
+        if (send && (sendto(sockfd, sendBuf, len, 0, 
+            (struct sockaddr*)&dnsAddr, (socklen_t)slen) == -1))
         {
             logVerbose("Can't send packet(%s), return.", 
                 strerrorV(errno, errorbuf));
@@ -320,9 +326,9 @@ int resolve(const char *node, const char *service,
         if ((rlen = recvfrom(sockfd, recvBuf, BUFSIZE, 0, 
             (struct sockaddr*)&dnsAddr, &slen)) == -1)
         {
-            if (errno == EAGAIN || errno == ECONNREFUSED)
+            if (errno == EAGAIN || errno == EWOULDBLOCK)
             {
-                logVerbose("Seems like a timeout, ignore.");
+                logVerbose("Seems like a timeout, retry.");
                 continue;
             }
             logVerbose("Can't receive packet(%s), return.", 
@@ -359,7 +365,7 @@ int resolve(const char *node, const char *service,
     }
     else
     {
-        logVerbose("Failed for too many times, return.");
+        logVerbose("Failed too many times, return.");
     }
 
 resolve_fail_close:
