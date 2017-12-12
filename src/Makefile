@@ -13,13 +13,13 @@ LIB := -lpthread
 all: $(PROG)
 
 dnstest: $(OUT)
-	$(CC) $(CFLAGS) -o $(TARGET)/$(PACKAGE_PREFIX)dnstest test/dnstest.c $(OUT) $(LIB)
+	$(CC) $(CFLAGS) -o $(TARGET)/$(PACKAGE_PREFIX)dnstest dnstest.c $(OUT) $(LIB)
 
 nameserver: $(OUT)
-	$(CC) $(CFLAGS) -o $(TARGET)/$(PACKAGE_PREFIX)nameserver dns/nameserver.c $(OUT) $(LIB)
+	$(CC) $(CFLAGS) -o $(TARGET)/$(PACKAGE_PREFIX)nameserver nameserver.c $(OUT) $(LIB)
 
 mydns.o:
-	$(CC) $(CFLAGS) -c dns/mydns.c
+	$(CC) $(CFLAGS) -c mydns.c
 
 log.o:
 	$(CC) $(CFLAGS) -c log.c
