@@ -1,7 +1,6 @@
 #include "stdhdr.h"
 #include "log.h"
 #include "types.h"
-#include "lock.h"
 #include "mydns.h"
 
 void printAddrList(struct addrinfo *ite)
@@ -46,4 +45,6 @@ int main()
             logVerbose("Failed to resolve.");
         }
     }
+
+    return 0;
 }

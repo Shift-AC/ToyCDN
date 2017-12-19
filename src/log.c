@@ -23,7 +23,6 @@
 #include "log.h"
 
 int verbose = 0;
-lock_t logLock;
 FILE *logFile;
 sigset_t logMask, logOldMask;
 static struct timeval tst, ted;

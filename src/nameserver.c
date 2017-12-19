@@ -221,16 +221,18 @@ static char* parseLSALine(
 
 static void initHosts()
 {
+    int i;
+    int j;
     qsort(lsabuf, lsaCount, sizeof(struct lsabuf_t), compareLSABuf);
 
-    for (int i = 0; i < lsaCount; ++i)
+    for (i = 0; i < lsaCount; ++i)
     {
         if (!i || lsabuf[i].addr != lsabuf[i - 1].addr)
         {
             logVerboseL(2, "Using latest LSA information(%d) of %s", 
                 lsabuf[i].seq, inet_ntoa(*(struct in_addr*)&lsabuf[i].addr));
             hosts[hostCount++] = lsabuf[i].addr;
-            for (int j = 0; j < lsabuf[i].nbCount; ++j)
+            for (j = 0; j < lsabuf[i].nbCount; ++j)
             {
                 logVerboseL(2, "  ->neighbor[%d]: %s", j,
                     inet_ntoa(*(struct in_addr*)&lsabuf[i].nb[j]));
@@ -241,7 +243,7 @@ static void initHosts()
     qsort(hosts, hostCount, sizeof(unsigned int), compareServer);
     
     int pos = 0;
-    for (int i = 1; i < hostCount; ++i)
+    for (i = 1; i < hostCount; ++i)
     {
         if (hosts[i] != hosts[i - 1])
         {
@@ -252,7 +254,7 @@ static void initHosts()
     }
     hostCount = pos + 1;
 
-    for (int i = 0; i < serverCount; ++i)
+    for (i = 0; i < serverCount; ++i)
     {
         struct in_addr sv = *(struct in_addr*)&servers[i];
         servers[i] = binarySearch(hosts, hostCount, servers[i]);
@@ -267,7 +269,7 @@ static void initHosts()
         }
     }
     logVerbose("Dump mapping information:");
-    for (int i = 0; i < rawNameCount; ++i)
+    for (i = 0; i < rawNameCount; ++i)
     {
         logVerbose("  ->%s: 233.233.233.%d", rawNames[i], i);
     }
@@ -278,6 +280,8 @@ static void initLSA(const char *path)
     FILE *is = fopen(path, "r");
     char line[BUFSIZE];
     int ln = 1;
+    int i;
+    int j;
 
     if (is == NULL)
     {
@@ -292,13 +296,13 @@ static void initLSA(const char *path)
 
     initHosts();
 
-    for (int i = 0; i < lsaCount; ++i)
+    for (i = 0; i < lsaCount; ++i)
     {
         if (!i || lsabuf[i].addr != lsabuf[i - 1].addr)
         {
             unsigned int addr = lsabuf[i].addr;
             int pos = binarySearch(hosts, hostCount, addr);
-            for (int j = 0; j < lsabuf[i].nbCount; ++j)
+            for (j = 0; j < lsabuf[i].nbCount; ++j)
             {
                 int ipos = binarySearch(hosts, hostCount, 
                     lsabuf[i].nb[j]);
@@ -314,16 +318,18 @@ static void initLSA(const char *path)
 static void dijkstra(unsigned int addr)
 {
     int src = binarySearch(hosts, hostCount, addr);
+    int i;
+    int j;
     memset(dist, -1, sizeof(dist));
     memset(used, 0, sizeof(used));
 
     dist[src] = 0;
 
-    for (int i = 0; i < hostCount; ++i)
+    for (i = 0; i < hostCount; ++i)
     {
         int tsrc = -1;
         int tdist = 2147483647;
-        for (int j = 0; j < hostCount; ++j)
+        for (j = 0; j < hostCount; ++j)
         {
             if (used[j])
             {
@@ -342,7 +348,7 @@ static void dijkstra(unsigned int addr)
         }
 
         used[tsrc] = 1;
-        for (int j = 0; j < hostCount; ++j)
+        for (j = 0; j < hostCount; ++j)
         {
             if (map[tsrc][j] && (dist[j] == -1 || dist[j] > dist[tsrc] + 1))
             {
@@ -407,6 +413,7 @@ static unsigned int locationAware()
     unsigned int client = *(unsigned int*)&clientInfo.sin_addr;
     int ci;
     int mi;
+    int i;
     if ((ci = binarySearch(hosts, hostCount, client)) == -1)
     {
         logWarning("Client not in the network!");
@@ -419,19 +426,19 @@ static unsigned int locationAware()
 
     dijkstra(ci);
     logVerboseL(2, "Dump mapping information:");
-    for (int i = 0; i < rawNameCount; ++i)
+    for (i = 0; i < rawNameCount; ++i)
     {
         logVerboseL(2, "  ->%s: 233.233.233.%d", rawNames[i], i);
     }
     logVerboseL(2, "Dump distance information:");
-    for (int i = 0; i < hostCount; ++i)
+    for (i = 0; i < hostCount; ++i)
     {
         logVerboseL(2, "  ->%d(%s): %d", i, 
             inet_ntoa(*(struct in_addr*)&hosts[i]), dist[i]);
     }
 
     mi = 0;
-    for (int i = 1; i < serverCount; ++i)
+    for (i = 1; i < serverCount; ++i)
     {
         if (dist[servers[i]] == -1)
         {

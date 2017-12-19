@@ -2,7 +2,6 @@
 #define __LOG_H__
 
 #include <stdio.h>
-#include "lock.h"
 
 // set them use gcc -D option.
 #ifndef PROGNAME
@@ -14,7 +13,6 @@
 
 extern int verbose;
 extern FILE *logFile;
-extern lock_t logLock;
 extern sigset_t logMask, logOldMask;
 void setVerbose(int level);
 
@@ -27,12 +25,10 @@ void printInitLog();
 #define doLog(prefix, ...)                                          \
     {                                                               \
         sigprocmask(SIG_SETMASK, &logMask, &logOldMask);            \
-        lock(&logLock);                                             \
         fprintf(logFile, "%s(%14.6lf): ", prefix,  getTimestamp()); \
         fprintf(logFile, __VA_ARGS__);                              \
         fprintf(logFile, "\n");                                     \
         fflush(logFile);                                            \
-        release(&logLock);                                          \
         sigprocmask(SIG_SETMASK, &logOldMask, &logMask);            \
     }
 

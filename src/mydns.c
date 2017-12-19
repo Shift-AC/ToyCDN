@@ -118,7 +118,7 @@ const char *qntoa(char *dest, const char *src)
 
 static int generateRequest(const char *node, const char *service, void *pak)
 {
-    static lock_t id = 0;
+    static int id = 0;
     static const word qtype = 1;
     static const word qclass = 1;
     struct dnshdr* hdr = (struct dnshdr*)pak;
@@ -127,7 +127,7 @@ static int generateRequest(const char *node, const char *service, void *pak)
     // make gcc happy
     service = service + 1 - 1;
 
-    hdr->id = htons(atomic_fetch_add_explicit(&id, 1, memory_order_relaxed));
+    hdr->id = htons(id++);
     hdr->qr = 0;
     hdr->opcode = 0;
     hdr->aa = 0;
@@ -163,6 +163,7 @@ static inline int isReply(const void *spak, const void *rpak)
 static inline int isFailed(const void *spak, const void *rpak, int len)
 {
     struct dnshdr* rhdr = (struct dnshdr*)rpak;
+    int i;
 
     if (rhdr->rcode != 0)
     {
@@ -175,7 +176,7 @@ static inline int isFailed(const void *spak, const void *rpak, int len)
         return FAIL_INVALID;
     }
 
-    for (int i = sizeof(struct dnshdr); i < len; ++i)
+    for (i = sizeof(struct dnshdr); i < len; ++i)
     {
         if (*(char*)spak != *(char*)rpak)
         {
@@ -439,6 +440,7 @@ void dumpDNSPacket(const void *pak, int len)
 {
     const struct dnshdr *hdr = (const struct dnshdr*)pak;
     int i;
+    int j;
     const char *pos;
     char namebuf[BUFSIZE];
     logVerbose("Dumping packet with len=%d", len);
@@ -496,7 +498,7 @@ void dumpDNSPacket(const void *pak, int len)
         logVerbose("    ->ttl: %d", ttl);
         logVerbose("    ->rdlength: %d", rdlength);
         strcpy(rd, "    ->rd:");
-        for (int i = 0; i < rdlength; ++i)
+        for (j = 0; j < rdlength; ++j)
         {
             rd += strlen(rd);
             sprintf(rd, " %x", *(pos++));
